@@ -1,0 +1,97 @@
+package tools
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"bytes"
+
+	"github.com/aws-organizations/mcp-server/config"
+	"github.com/aws-organizations/mcp-server/models"
+	"github.com/mark3labs/mcp-go/mcp"
+)
+
+func InviteaccounttoorganizationHandler(cfg *config.APIConfig) func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	return func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		args, ok := request.Params.Arguments.(map[string]any)
+		if !ok {
+			return mcp.NewToolResultError("Invalid arguments object"), nil
+		}
+		// Create properly typed request body using the generated schema
+		var requestBody models.InviteAccountToOrganizationRequest
+		
+		// Optimized: Single marshal/unmarshal with JSON tags handling field mapping
+		if argsJSON, err := json.Marshal(args); err == nil {
+			if err := json.Unmarshal(argsJSON, &requestBody); err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to convert arguments to request type: %v", err)), nil
+			}
+		} else {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal arguments: %v", err)), nil
+		}
+		
+		bodyBytes, err := json.Marshal(requestBody)
+		if err != nil {
+			return mcp.NewToolResultErrorFromErr("Failed to encode request body", err), nil
+		}
+		url := fmt.Sprintf("%s/#X-Amz-Target=AWSOrganizationsV20161128.InviteAccountToOrganization", cfg.BaseURL)
+		req, err := http.NewRequest("POST", url, bytes.NewBuffer(bodyBytes))
+		req.Header.Set("Content-Type", "application/json")
+		if err != nil {
+			return mcp.NewToolResultErrorFromErr("Failed to create request", err), nil
+		}
+		// Set authentication based on auth type
+		// Handle multiple authentication parameters
+		if cfg.BearerToken != "" {
+			req.Header.Set("X-Amz-Security-Token", cfg.BearerToken)
+		}
+		req.Header.Set("Accept", "application/json")
+		if val, ok := args["X-Amz-Target"]; ok {
+			req.Header.Set("X-Amz-Target", fmt.Sprintf("%v", val))
+		}
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return mcp.NewToolResultErrorFromErr("Request failed", err), nil
+		}
+		defer resp.Body.Close()
+
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return mcp.NewToolResultErrorFromErr("Failed to read response body", err), nil
+		}
+
+		if resp.StatusCode >= 400 {
+			return mcp.NewToolResultError(fmt.Sprintf("API error: %s", body)), nil
+		}
+		// Use properly typed response
+		var result models.InviteAccountToOrganizationResponse
+		if err := json.Unmarshal(body, &result); err != nil {
+			// Fallback to raw text if unmarshaling fails
+			return mcp.NewToolResultText(string(body)), nil
+		}
+
+		prettyJSON, err := json.MarshalIndent(result, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultErrorFromErr("Failed to format JSON", err), nil
+		}
+
+		return mcp.NewToolResultText(string(prettyJSON)), nil
+	}
+}
+
+func CreateInviteaccounttoorganizationTool(cfg *config.APIConfig) models.Tool {
+	tool := mcp.NewTool("post_#X-Amz-Target=AWSOrganizationsV20161128_InviteAccountToOrganization",
+		mcp.WithDescription("<p>Sends an invitation to another account to join your organization as a member account. Organizations sends email on your behalf to the email address that is associated with the other account's owner. The invitation is implemented as a <a>Handshake</a> whose details are in the response.</p> <important> <ul> <li> <p>You can invite Amazon Web Services accounts only from the same seller as the management account. For example, if your organization's management account was created by Amazon Internet Services Pvt. Ltd (AISPL), an Amazon Web Services seller in India, you can invite only other AISPL accounts to your organization. You can't combine accounts from AISPL and Amazon Web Services or from any other Amazon Web Services seller. For more information, see <a href="https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/useconsolidatedbilliing-India.html">Consolidated Billing in India</a>.</p> </li> <li> <p>If you receive an exception that indicates that you exceeded your account limits for the organization or that the operation failed because your organization is still initializing, wait one hour and then try again. If the error persists after an hour, contact <a href="https://console.aws.amazon.com/support/home#/">Amazon Web Services Support</a>.</p> </li> </ul> </important> <p>If the request includes tags, then the requester must have the <code>organizations:TagResource</code> permission.</p> <p>This operation can be called only from the organization's management account.</p>"),
+		mcp.WithString("X-Amz-Target", mcp.Required(), mcp.Description("")),
+		mcp.WithString("Notes", mcp.Description("")),
+		mcp.WithString("Tags", mcp.Description("")),
+		mcp.WithString("Target", mcp.Required(), mcp.Description("")),
+	)
+
+	return models.Tool{
+		Definition: tool,
+		Handler:    InviteaccounttoorganizationHandler(cfg),
+	}
+}
